@@ -1,6 +1,7 @@
 import os
 import time
 from urllib.parse import urljoin
+from datetime import datetime, timezone
 
 import requests
 from bs4 import BeautifulSoup
@@ -29,6 +30,7 @@ def fetch_page(url: str, cache_name: str) -> str:
     if response.status_code != 200:
         raise Exception(f"Failed to fetch {url}: status {response.status_code}")
 
+    response.encoding = "utf-8"
     html = response.text
     with open(cache_path, "w", encoding="utf-8") as f:
         f.write(html)
@@ -75,6 +77,41 @@ def extract_book_links(pages):
     unique_links = list(dict.fromkeys(links))  # dedupe, keep order
     return unique_links
 
+def cache_name_for_book(book_url: str) -> str:
+    # e.g. https://.../a-light-in-the-attic_1000/index.html -> a-light-in-the-attic_1000.html
+    slug = book_url.rstrip("/").split("/")[-2]
+    return f"book-{slug}.html"
+
+
+def extract_book_record(book_url: str, source_page: str) -> dict:
+    cache_name = cache_name_for_book(book_url)
+    html = fetch_page(book_url, cache_name)
+    soup = BeautifulSoup(html, "html.parser")
+
+    title = soup.select_one("div.product_main h1").get_text(strip=True)
+
+    price_text = soup.select_one("p.price_color").get_text(strip=True)
+
+    availability_text = soup.select_one("p.availability").get_text(strip=True)
+
+    rating_tag = soup.select_one("p.star-rating")
+    rating_classes = rating_tag.get("class", [])
+    rating_text = next((c for c in rating_classes if c != "star-rating"), None)
+
+    description_tag = soup.select_one("#product_description ~ p")
+    description = description_tag.get_text(strip=True) if description_tag else None
+
+    return {
+        "title": title,
+        "product_url": book_url,
+        "price_text": price_text,
+        "availability_text": availability_text,
+        "rating_text": rating_text,
+        "description": description,
+        "source_page": source_page,
+        "fetched_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+
 
 if __name__ == "__main__":
     pages = discover_catalogue_pages(START_URL)
@@ -83,3 +120,21 @@ if __name__ == "__main__":
     print(f"catalogue_pages={len(pages)}")
     print(f"discovered={len(book_links)}")
     print(f"unique_urls={len(book_links)}")
+
+    # figure out which catalogue page each book came from
+    url_to_source = {}
+    for page_url, html in pages:
+        soup = BeautifulSoup(html, "html.parser")
+        for article in soup.select("article.product_pod"):
+            a_tag = article.select_one("h3 a")
+            if a_tag and a_tag.get("href"):
+                absolute_url = urljoin(page_url, a_tag["href"])
+                url_to_source.setdefault(absolute_url, page_url)
+
+    records = []
+    for link in book_links:
+        record = extract_book_record(link, url_to_source[link])
+        records.append(record)
+
+    print(f"detail_pages={len(records)}")
+    print(records[0])
