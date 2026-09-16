@@ -156,6 +156,38 @@ def export_to_csv(records: list, path: str):
         for record in records:
             writer.writerow(record)
 
+def generate_dashboard(records: list, report: dict, path: str):
+    prices = [r["price_gbp"] for r in records if r["price_gbp"] is not None]
+    price_min = min(prices) if prices else None
+    price_max = max(prices) if prices else None
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Polite Scraper Dashboard</title>
+<style>
+  body {{ font-family: sans-serif; max-width: 600px; margin: 40px auto; color: #222; }}
+  h1 {{ font-size: 1.4rem; }}
+  .stat {{ display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd; }}
+  .stat span:first-child {{ color: #666; }}
+  .stat span:last-child {{ font-weight: bold; }}
+</style>
+</head>
+<body>
+  <h1>Polite Scraper — Dashboard</h1>
+  <div class="stat"><span>Record count</span><span>{len(records)}</span></div>
+  <div class="stat"><span>Price range</span><span>£{price_min:.2f} - £{price_max:.2f}</span></div>
+  <div class="stat"><span>Failed pages (last run)</span><span>{report['failed_pages']}</span></div>
+  <div class="stat"><span>Invalid records (last run)</span><span>{report['invalid_records']}</span></div>
+  <div class="stat"><span>Data last refreshed</span><span>{report['end_time']}</span></div>
+  <div class="stat"><span>Last run duration</span><span>{report['duration_seconds']}s</span></div>
+</body>
+</html>
+"""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html)
+
 if __name__ == "__main__":
     run_start = datetime.now(timezone.utc)
     run_start_monotonic = time.monotonic()
@@ -224,6 +256,8 @@ if __name__ == "__main__":
     }
     with open("output/run-report.json", "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
+
+    generate_dashboard(list(valid_records.values()), report, "output/dashboard.html")
 
     print(f"detail_pages={len(book_links)}")
     print(f"valid_records={len(valid_records)}")

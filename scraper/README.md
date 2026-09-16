@@ -88,3 +88,7 @@ Use an official API when one exists instead of scraping. Never bypass logins, pa
 ## Extras: CSV export
 
 `output/books.csv` is generated from the same validated records as `books.json`. No values needed flattening — every field in the schema is already a flat string, number, or null, so the conversion is a direct field-by-field write. `null` values (missing `rating_text` or `description`) appear as empty cells in the CSV.
+
+## Extras: Tiny dashboard
+
+`output/dashboard.html` is a static snapshot regenerated on every run — no server, no JavaScript, just an HTML file written directly from Python using the same `valid_records` and `run-report.json` data already produced by the pipeline. It shows record count, price range, failed pages, invalid records, and when the data was last refreshed. Open it in any browser after running the scraper.
