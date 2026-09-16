@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import json
 import re
 from pydantic import BaseModel, ValidationError
+import csv
 
 import requests
 from bs4 import BeautifulSoup
@@ -144,6 +145,17 @@ def normalize_record(raw: dict) -> dict:
         "fetched_at": raw["fetched_at"],
     }
 
+def export_to_csv(records: list, path: str):
+    if not records:
+        return
+
+    fieldnames = list(records[0].keys())
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for record in records:
+            writer.writerow(record)
+
 if __name__ == "__main__":
     run_start = datetime.now(timezone.utc)
     run_start_monotonic = time.monotonic()
@@ -194,6 +206,8 @@ if __name__ == "__main__":
 
     with open("output/errors.json", "w", encoding="utf-8") as f:
         json.dump(invalid_records, f, indent=2, ensure_ascii=False)
+
+    export_to_csv(list(valid_records.values()), "output/books.csv")
 
     run_end = datetime.now(timezone.utc)
     duration_seconds = round(time.monotonic() - run_start_monotonic, 2)

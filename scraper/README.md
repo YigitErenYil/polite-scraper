@@ -84,3 +84,7 @@ The product title, price, availability, rating, and description are all present 
 ## Ethics note
 
 Use an official API when one exists instead of scraping. Never bypass logins, paywalls, or explicit blocks (a `403` or a disallow rule in `robots.txt` means stop, not retry). Collect only the data actually needed for the task, and identify the scraper honestly via its user-agent so a site owner can always tell who made the request.
+
+## Extras: CSV export
+
+`output/books.csv` is generated from the same validated records as `books.json`. No values needed flattening — every field in the schema is already a flat string, number, or null, so the conversion is a direct field-by-field write. `null` values (missing `rating_text` or `description`) appear as empty cells in the CSV.
