@@ -15,6 +15,8 @@ CACHE_DIR = "cache"
 START_URL = "https://books.toscrape.com/catalogue/page-1.html"
 DELAY_SECONDS = 0.5
 MAX_PAGES = 3
+INJECT_FAKE_URL_FOR_TESTING = False  # set True temporarily to test failure handling
+
 
 class BookRecord(BaseModel):
     title: str
@@ -143,12 +145,18 @@ def normalize_record(raw: dict) -> dict:
     }
 
 if __name__ == "__main__":
+    run_start = datetime.now(timezone.utc)
+    run_start_monotonic = time.monotonic()
+
     pages = discover_catalogue_pages(START_URL)
     book_links = extract_book_links(pages)
 
     print(f"catalogue_pages={len(pages)}")
     print(f"discovered={len(book_links)}")
     print(f"unique_urls={len(book_links)}")
+
+    if INJECT_FAKE_URL_FOR_TESTING:
+        book_links.append("https://books.toscrape.com/catalogue/this-book-does-not-exist_9999/index.html")
 
     url_to_source = {}
     for page_url, html in pages:
@@ -158,14 +166,22 @@ if __name__ == "__main__":
             if a_tag and a_tag.get("href"):
                 absolute_url = urljoin(page_url, a_tag["href"])
                 url_to_source.setdefault(absolute_url, page_url)
+    if INJECT_FAKE_URL_FOR_TESTING:
+        url_to_source[book_links[-1]] = "https://books.toscrape.com/catalogue/page-1.html"
 
-    valid_records = {}  # keyed by product_url, so reruns don't duplicate
+    valid_records = {}
     invalid_records = []
+    failed_pages = 0
 
     for link in book_links:
-        raw = extract_book_record(link, url_to_source[link])
-        normalized = normalize_record(raw)
+        try:
+            raw = extract_book_record(link, url_to_source[link])
+        except Exception as e:
+            print(f"FAILED url={link} error={e}")
+            failed_pages += 1
+            continue
 
+        normalized = normalize_record(raw)
         try:
             validated = BookRecord(**normalized)
             valid_records[validated.product_url] = validated.model_dump()
@@ -179,6 +195,23 @@ if __name__ == "__main__":
     with open("output/errors.json", "w", encoding="utf-8") as f:
         json.dump(invalid_records, f, indent=2, ensure_ascii=False)
 
+    run_end = datetime.now(timezone.utc)
+    duration_seconds = round(time.monotonic() - run_start_monotonic, 2)
+
+    report = {
+        "start_time": run_start.isoformat().replace("+00:00", "Z"),
+        "end_time": run_end.isoformat().replace("+00:00", "Z"),
+        "duration_seconds": duration_seconds,
+        "catalogue_pages_fetched": len(pages),
+        "book_pages_attempted": len(book_links),
+        "valid_records": len(valid_records),
+        "invalid_records": len(invalid_records),
+        "failed_pages": failed_pages,
+    }
+    with open("output/run-report.json", "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+
     print(f"detail_pages={len(book_links)}")
     print(f"valid_records={len(valid_records)}")
     print(f"invalid_records={len(invalid_records)}")
+    print(f"failed_pages={failed_pages}")

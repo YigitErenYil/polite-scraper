@@ -1,0 +1,10 @@
+{
+  "start_time": "2026-09-16T12:23:06.936727Z",
+  "end_time": "2026-09-16T12:23:07.564622Z",
+  "duration_seconds": 0.63,
+  "catalogue_pages_fetched": 3,
+  "book_pages_attempted": 60,
+  "valid_records": 60,
+  "invalid_records": 0,
+  "failed_pages": 0
+}
