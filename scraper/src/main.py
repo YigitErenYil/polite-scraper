@@ -2,6 +2,9 @@ import os
 import time
 from urllib.parse import urljoin
 from datetime import datetime, timezone
+import json
+import re
+from pydantic import BaseModel, ValidationError
 
 import requests
 from bs4 import BeautifulSoup
@@ -12,6 +15,17 @@ CACHE_DIR = "cache"
 START_URL = "https://books.toscrape.com/catalogue/page-1.html"
 DELAY_SECONDS = 0.5
 MAX_PAGES = 3
+
+class BookRecord(BaseModel):
+    title: str
+    product_url: str
+    price_gbp: float
+    price_text: str
+    availability_text: str
+    rating_text: str | None
+    description: str | None
+    source_page: str
+    fetched_at: str
 
 
 def fetch_page(url: str, cache_name: str) -> str:
@@ -112,6 +126,21 @@ def extract_book_record(book_url: str, source_page: str) -> dict:
         "fetched_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
 
+def normalize_record(raw: dict) -> dict:
+    price_match = re.search(r"[\d.]+", raw["price_text"])
+    price_gbp = float(price_match.group()) if price_match else None
+
+    return {
+        "title": raw["title"],
+        "product_url": raw["product_url"],
+        "price_gbp": price_gbp,
+        "price_text": raw["price_text"],
+        "availability_text": raw["availability_text"],
+        "rating_text": raw["rating_text"],
+        "description": raw["description"],
+        "source_page": raw["source_page"],
+        "fetched_at": raw["fetched_at"],
+    }
 
 if __name__ == "__main__":
     pages = discover_catalogue_pages(START_URL)
@@ -121,7 +150,6 @@ if __name__ == "__main__":
     print(f"discovered={len(book_links)}")
     print(f"unique_urls={len(book_links)}")
 
-    # figure out which catalogue page each book came from
     url_to_source = {}
     for page_url, html in pages:
         soup = BeautifulSoup(html, "html.parser")
@@ -131,10 +159,26 @@ if __name__ == "__main__":
                 absolute_url = urljoin(page_url, a_tag["href"])
                 url_to_source.setdefault(absolute_url, page_url)
 
-    records = []
-    for link in book_links:
-        record = extract_book_record(link, url_to_source[link])
-        records.append(record)
+    valid_records = {}  # keyed by product_url, so reruns don't duplicate
+    invalid_records = []
 
-    print(f"detail_pages={len(records)}")
-    print(records[0])
+    for link in book_links:
+        raw = extract_book_record(link, url_to_source[link])
+        normalized = normalize_record(raw)
+
+        try:
+            validated = BookRecord(**normalized)
+            valid_records[validated.product_url] = validated.model_dump()
+        except ValidationError as e:
+            invalid_records.append({"record": normalized, "error": str(e)})
+
+    os.makedirs("output", exist_ok=True)
+    with open("output/books.json", "w", encoding="utf-8") as f:
+        json.dump(list(valid_records.values()), f, indent=2, ensure_ascii=False)
+
+    with open("output/errors.json", "w", encoding="utf-8") as f:
+        json.dump(invalid_records, f, indent=2, ensure_ascii=False)
+
+    print(f"detail_pages={len(book_links)}")
+    print(f"valid_records={len(valid_records)}")
+    print(f"invalid_records={len(invalid_records)}")
